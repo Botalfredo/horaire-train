@@ -82,7 +82,7 @@ void planifierProchainRafraichissement(const MergedData& data) {
 
   // Entre 15h30 (930 min) et 19h00 (1140 min)
   if (minutesAujourdhui >= (15 * 60 + 30) && minutesAujourdhui < (19 * 60)) {
-    intervalleMinutes = 5;
+    intervalleMinutes = 10;
   }
 
   time_t ciblePeriodique = maintenant + (intervalleMinutes * 60);
@@ -170,9 +170,6 @@ void setup() {
   display.setRotation(1);  // Paysage
   display.setFont(&FreeSans9pt7b);
   display.setFullWindow();
-  display.setTextColor(GxEPD_BLACK);
-  display.setCursor(20, 50);
-  display.print("Connexion WIFI");
 
   Serial.println("Collecte des donnees en cours...");
 
@@ -206,6 +203,7 @@ void loop() {
     fetchTrainData(mesJourneys);
     fetchDepartures(mesDepartures);
     fusionnerDonnees(mesJourneys, mesDepartures, affichageFinal);
+    printMergedData(affichageFinal);
 
     // 2. Affichage sur l'écran E-paper
     afficherHorairesTrains(affichageFinal);

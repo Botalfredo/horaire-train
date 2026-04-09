@@ -1,5 +1,5 @@
 // Variables globales pour mémoriser l'état précédent
-MergedTrain anciensTrains[5]; // La structure MergedData limite déjà à 5 trains
+MergedTrain anciensTrains[5]; 
 bool premierAffichage = true;
 
 // =========================================================================
@@ -20,8 +20,8 @@ void dessinerLigneTrain(const MergedTrain &train, int index, int startY, int esp
     display.setCursor(x, y);
     display.print(train.prevu);
   } else {
-    // Train en retard : On écrit l'heure prévue en rouge et on la barre
-    display.setTextColor(GxEPD_RED);
+    // Train en retard : On écrit l'heure prévue en ROUGE et on la barre
+    display.setTextColor(GxEPD_RED); // CORRECTION : Ajout de la couleur rouge ici
     display.setCursor(x, y);
     display.print(train.prevu);
 
@@ -32,33 +32,28 @@ void dessinerLigneTrain(const MergedTrain &train, int index, int startY, int esp
 
     int hauteurLigne = y - (h / 2) + 2;
     display.drawLine(x, hauteurLigne, x + w, hauteurLigne, GxEPD_RED);
-    display.drawLine(x, hauteurLigne - 1, x + w, hauteurLigne - 1, GxEPD_RED); // Ligne double pour plus d'épaisseur
+    display.drawLine(x, hauteurLigne - 1, x + w, hauteurLigne - 1, GxEPD_RED); 
 
     // On décale le curseur pour écrire l'heure réelle
     x += w + 8; 
-    display.setTextColor(GxEPD_BLACK);
+    display.setTextColor(GxEPD_RED);
     display.setCursor(x, y);
     display.print(train.reel);
   }
 
   // -- 2. AFFICHAGE DU STATUT / ALERTE --
-  x = 110; // Position X pour démarrer les messages
+  x = 110; 
   display.setCursor(x, y);
 
   if (!enRetard && !aUneAlerte) {
-    // Tout va bien : on l'écrit en noir
     display.setTextColor(GxEPD_BLACK);
     display.print("A l'heure");
   } else {
-    // Soit en retard, soit une alerte : on attire l'attention en rouge
     display.setTextColor(GxEPD_RED);
-    
     if (aUneAlerte) {
-      // On affiche l'alerte textuelle nettoyée de ses accents
       display.print(enleverAccents(train.alerteMsg.substring(0, 22)));
     } else {
-      // S'il est en retard sans texte d'alerte spécifique, on affiche son délai
-      display.print(enleverAccents(train.retardStr)); // Affiche par ex "⚠️ +5m" (sans l'émoji si ta police ne le supporte pas)
+      display.print(enleverAccents(train.retardStr)); 
     }
   }
 }
@@ -72,7 +67,7 @@ void afficherHorairesTrains(const MergedData &affichageFinal) {
 
   if (premierAffichage) {
     // ---------------------------------------------------------
-    // 1er PASSAGE : Rafraîchissement complet de l'écran (Full)
+    // 1er PASSAGE : Rafraîchissement complet de l'écran
     // ---------------------------------------------------------
     display.setFullWindow();
     display.firstPage();
@@ -80,7 +75,11 @@ void afficherHorairesTrains(const MergedData &affichageFinal) {
       display.fillScreen(GxEPD_WHITE);
       for (int i = 0; i < affichageFinal.count; i++) {
         dessinerLigneTrain(affichageFinal.trains[i], i, startY, espacementY);
-        anciensTrains[i] = affichageFinal.trains[i];  // On sauvegarde l'état en mémoire
+        anciensTrains[i] = affichageFinal.trains[i]; 
+      }
+      // On s'assure de vider les lignes restantes en mémoire
+      for (int i = affichageFinal.count; i < 5; i++) {
+         anciensTrains[i] = MergedTrain();
       }
     } while (display.nextPage());
 
@@ -88,32 +87,65 @@ void afficherHorairesTrains(const MergedData &affichageFinal) {
 
   } else {
     // ---------------------------------------------------------
-    // PASSAGES SUIVANTS : Mise à jour partielle (Fast)
+    // PASSAGES SUIVANTS : Mise à jour partielle optimisée
     // ---------------------------------------------------------
-    for (int i = 0; i < affichageFinal.count; i++) {
+    int firstChanged = -1;
+    int lastChanged = -1;
 
-      // On vérifie s'il y a une différence avec l'ancien état mémorisé
-      if (affichageFinal.trains[i].prevu != anciensTrains[i].prevu || 
-          affichageFinal.trains[i].reel != anciensTrains[i].reel || 
-          affichageFinal.trains[i].alerteMsg != anciensTrains[i].alerteMsg) {
+    // 1. On cherche quelle est la zone affectée par les changements
+    for (int i = 0; i < 5; i++) { // On vérifie toujours les 5 emplacements possibles
+      bool existsNow = (i < affichageFinal.count);
+      bool existedBefore = (anciensTrains[i].prevu != ""); 
 
-        // Calcul de la zone rectangulaire (Bounding Box) à effacer et redessiner
-        int yBase = startY + (i * espacementY);
-        int windowY = yBase - 20; 
-        int windowHeight = espacementY;
+      bool changed = false;
+      
+      if (existsNow) {
+        if (affichageFinal.trains[i].prevu != anciensTrains[i].prevu || 
+            affichageFinal.trains[i].reel != anciensTrains[i].reel || 
+            affichageFinal.trains[i].alerteMsg != anciensTrains[i].alerteMsg) {
+          changed = true;
+        }
+      } else if (existedBefore) {
+        // Il n'y a plus de train à cet index (ex: on passe de 5 à 4 trains)
+        changed = true;
+      }
 
-        display.setPartialWindow(0, windowY, display.width(), windowHeight);
+      if (changed) {
+        if (firstChanged == -1) firstChanged = i;
+        lastChanged = i;
+      }
+    }
 
-        display.firstPage();
-        do {
-          // On efface l'ancienne ligne
-          display.fillRect(0, windowY, display.width(), windowHeight, GxEPD_WHITE);
-          // On dessine la nouvelle ligne
-          dessinerLigneTrain(affichageFinal.trains[i], i, startY, espacementY);
-        } while (display.nextPage());
+    // 2. S'il y a eu un changement, on met à jour en UNE SEULE FOIS
+    if (firstChanged != -1) {
+      
+      int windowY = (startY + (firstChanged * espacementY)) - 20;
+      int nbLignes = (lastChanged - firstChanged) + 1;
+      int windowHeight = nbLignes * espacementY;
 
-        // On met à jour la mémoire
-        anciensTrains[i] = affichageFinal.trains[i];
+      // On limite le rafraichissement au grand rectangle qui contient les modifs
+      display.setPartialWindow(0, windowY, display.width(), windowHeight);
+
+      display.firstPage();
+      do {
+        // On efface la zone en blanc
+        display.fillRect(0, windowY, display.width(), windowHeight, GxEPD_WHITE);
+        
+        // On redessine uniquement les trains présents dans cette zone
+        for (int i = firstChanged; i <= lastChanged; i++) {
+          if (i < affichageFinal.count) {
+            dessinerLigneTrain(affichageFinal.trains[i], i, startY, espacementY);
+          }
+        }
+      } while (display.nextPage());
+
+      // 3. On met à jour la mémoire globale
+      for (int i = firstChanged; i <= lastChanged; i++) {
+        if (i < affichageFinal.count) {
+          anciensTrains[i] = affichageFinal.trains[i];
+        } else {
+          anciensTrains[i] = MergedTrain(); // Structure vide pour effacer la mémoire
+        }
       }
     }
   }
